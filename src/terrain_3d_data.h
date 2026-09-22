@@ -19,7 +19,14 @@ class Terrain3DData : public Object {
 
 public: // Constants
 	static inline const real_t CURRENT_VERSION = 0.93f;
-	static inline const int REGION_MAP_SIZE = 32;
+	// Patched for scramble-the-chickens: reduced from 32 to shrink the MaterialUniforms
+	// uniform block below the 16384-byte GL_MAX_UNIFORM_BLOCK_SIZE cap Mac Chrome (WebGL2
+	// via ANGLE->Metal) enforces. Paired with shrinking _region_locations from 1024->64
+	// in the shader sources (no configurable max_regions property in this v1.0.2-stable
+	// base, so it's hardcoded directly rather than backporting the newer enum-based
+	// upstream feature, which doesn't apply cleanly to this base and pulled in an
+	// unrelated crash from main).
+	static inline const int REGION_MAP_SIZE = 16;
 	static inline const Vector2i REGION_MAP_VSIZE = Vector2i(REGION_MAP_SIZE, REGION_MAP_SIZE);
 
 	enum HeightFilter {
@@ -199,13 +206,19 @@ VARIANT_ENUM_CAST(Terrain3DData::HeightFilter);
 
 // Verifies the location is within the bounds of the _region_map array and
 // the world, returning the _region_map index, which contains the region_id.
-// Valid region locations are -16, -16 to 15, 15, or when offset: 0, 0 to 31, 31
-// If any bits other than 0x1F are set, it's out of bounds and returns -1
+// Valid region locations are -REGION_MAP_SIZE/2 to REGION_MAP_SIZE/2-1 in each axis,
+// or when offset: 0 to REGION_MAP_SIZE-1.
+// PATCHED: this mask was hardcoded to 0x1F (31), which only matches the stock
+// REGION_MAP_SIZE=32. That silently accepted out-of-range offsets up to 31 even
+// after _region_map was resized smaller (REGION_MAP_SIZE=16 here), writing past
+// the end of the resized vector and corrupting the heap. The mask must track
+// REGION_MAP_SIZE (kept as a power of two) instead of being a fixed literal.
+// If any bits other than (REGION_MAP_SIZE-1) are set, it's out of bounds and returns -1
 inline int Terrain3DData::get_region_map_index(const Vector2i &p_region_loc) {
 	// Offset world to positive values only
 	Vector2i loc = p_region_loc + (REGION_MAP_VSIZE / 2);
-	// Catch values > 31
-	if ((uint32_t(loc.x | loc.y) & uint32_t(~0x1F)) > 0) {
+	// Catch values >= REGION_MAP_SIZE
+	if ((uint32_t(loc.x | loc.y) & uint32_t(~(REGION_MAP_SIZE - 1))) > 0) {
 		return -1;
 	}
 	return loc.y * REGION_MAP_SIZE + loc.x;
