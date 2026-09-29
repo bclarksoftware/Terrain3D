@@ -1,4 +1,5 @@
 # Modeled off of https://github.com/godotengine/godot/blob/master/.github/workflows/runner.yml
+# no-op touch to force GitHub Actions to (re)register this workflow on the fork
 
 name: 🛠️ Build All Platforms
 on: 
