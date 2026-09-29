@@ -151,8 +151,8 @@ void Terrain3D::_grab_camera() {
 		_camera_instance_id = _camera->get_instance_id();
 	} else {
 		_camera_instance_id = 0;
-		set_physics_process(false); // disable snapping
-		LOG(ERROR, "Cannot find the active camera. Set it manually with Terrain3D.set_camera(). Stopping _physics_process()");
+		set_process(false); // disable snapping
+		LOG(ERROR, "Cannot find the active camera. Set it manually with Terrain3D.set_camera(). Stopping _process()");
 	}
 }
 
@@ -488,7 +488,7 @@ void Terrain3D::set_camera(Camera3D *p_camera) {
 			_camera_instance_id = _camera->get_instance_id();
 			LOG(DEBUG, "Setting camera: ", _camera);
 			_initialize();
-			set_physics_process(true); // enable snapping
+			set_process(true); // enable snapping
 		}
 	}
 }
@@ -857,7 +857,7 @@ void Terrain3D::_notification(const int p_what) {
 				_assets = ResourceLoader::get_singleton()->load(_assets->get_path(), "", ResourceLoader::CACHE_MODE_IGNORE);
 			}
 			_initialize(); // Rebuild anything freed: meshes, collision, instancer
-			set_physics_process(true);
+			set_process(true);
 			break;
 		}
 
@@ -877,8 +877,14 @@ void Terrain3D::_notification(const int p_what) {
 
 			/// Game Loop notifications
 
-		case NOTIFICATION_PHYSICS_PROCESS: {
-			// Node is processing one physics frame
+		case NOTIFICATION_PROCESS: {
+			// Node is processing one render frame. This was NOTIFICATION_PHYSICS_PROCESS
+			// (Terrain3D's own comment on __physics_process called it "a proxy for
+			// _process(delta)... due to godot-cpp#1022", a bug about virtual _process/_ready
+			// overrides - it doesn't apply here since this is a _notification() switch, not a
+			// virtual override. Physics-tick-gated updates meant the clipmap only recentered
+			// 60x/sec regardless of render rate, visible as terrain stepping at high refresh
+			// rates. godot_voxel's VoxelLodTerrain uses this same NOTIFICATION_PROCESS pattern.
 			__physics_process(get_process_delta_time());
 			break;
 		}
@@ -947,7 +953,7 @@ void Terrain3D::_notification(const int p_what) {
 			// Node is about to exit a SceneTree
 			// Sent on scene changes
 			LOG(INFO, "NOTIFICATION_EXIT_TREE");
-			set_physics_process(false);
+			set_process(false);
 			_destroy_mesher();
 			_destroy_mouse_picking();
 			if (_assets.is_valid()) {
